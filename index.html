@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>トレーラーハウスホテル 5年間収益・IRRシミュレーター</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap');
+    body {
+      font-family: 'Noto Sans JP', sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
+    }
+    input[type="range"] {
+      accent-color: #1e3a8a;
+    }
+    /* PDF印刷（window.print()）用の最適化スタイル */
+    @media print {
+      @page {
+        size: A4 portrait;
+        margin: 12mm;
+      }
+      body {
+        background-color: #ffffff !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        font-size: 11px;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .print-full-width {
+        width: 100% !important;
+        max-width: 100% !important;
+        grid-column: span 12 / span 12 !important;
+      }
+      .card-shadow {
+        box-shadow: none !important;
+        border: 1px solid #cbd5e1 !important;
+      }
+      .page-break-before {
+        page-break-before: always;
+      }
+    }
+  </style>
+</head>
+<body class="antialiased">
+
+  <!-- ヘッダー -->
+  <header class="bg-slate-900 text-white py-5 px-6 shadow-md">
+    <div class="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="bg-amber-500 text-slate-950 text-xs font-bold px-2.5 py-0.5 rounded uppercase tracking-wider">Investment Simulator</span>
+          <span class="text-slate-400 text-xs">1台あたり・5年間事業収支モデル</span>
+        </div>
+        <h1 class="text-xl md:text-2xl font-bold mt-1 tracking-tight">トレーラーハウスホテル 収益・レバレッジIRRシミュレーター</h1>
+      </div>
+      <div class="flex flex-wrap items-center gap-3 no-print">
+        <button onclick="resetDefaults()" class="px-3.5 py-2 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 transition">
+          初期値に戻す（借入5年）
+        </button>
+        <button onclick="window.print()" class="px-4 py-2 text-xs md:text-sm font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg shadow flex items-center gap-2 transition">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          評価レポートをPDF出力
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <!-- 左カラム：パラメータ入力パネル（印刷時は非表示にし、代わりに設定値サマリーをレポート内に表示） -->
+      <aside class="lg:col-span-4 space-y-5 no-print">
+        
+        <!-- 投資・資金調達条件 -->
+        <div class="bg-white rounded-xl p-5 card-shadow border border-slate-200">
+          <h2 class="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2.5 mb-4 flex items-center justify-between">
+            <span>1. 投資・資金調達条件（変動要素）</span>
+            <span class="text-xs font-normal text-blue-600">リアルタイム反映</span>
+          </h2>
+
+          <div class="space-y-4">
+            <!-- 初期投資額 -->
+            <div>
+              <div class="flex justify-between text-xs font-medium mb-1">
+                <label for="capex">初期投資額（車両・設置・備品）</label>
+                <span id="capex_val" class="font-bold text-slate-900">8,000,000 円</span>
+              </div>
+              <input type="range" id="capex" min="4000000" max="20000000" step="500000" value="8000000" class="w-full" oninput="updateSim()">
+              <div class="flex justify-between text-[10px] text-slate-400"><span>400万</span><span>1,200万</span><span>2,000万</span></div>
+            </div>
+
+            <!-- 自己資金 -->
+            <div>
+              <div class="flex justify-between text-xs font-medium mb-1">
+                <label for="equity">自己資金（エクイティ）</label>
+                <span id="equity_val" class="font-bold text-blue-700">2,000,000 円</span>
+              </div>
+              <input type="range" id="equity" min="0" max="20000000" step="500000" value="2000000" class="w-full" oninput="updateSim()">
+              <div class="flex justify-between text-[11px] text-slate-500 mt-1 bg-slate-50 px-2.5 py-1 rounded">
+                <span>銀行借入額（自動計算）:</span>
+                <span id="debt_display" class="font-bold text-slate-800">6,000,000 円</span>
+              </div>
+            </div>
+
+            <!-- 借入期間（変動要素） -->
+            <div>
+              <div class="flex justify-between text-xs font-medium mb-1">
+                <label for="loan_term">借入返済期間（年）</label>
+                <span id="loan_term_val" class="font-bold text-blue-700">5 年</span>
+              </div>
+              <input type="range" id="loan_term" min="1" max="15" step="1" value="5" class="w-full" oninput="updateSim()">
+              <div class="flex justify-between text-[10px] text-slate-400"><span>1年</span><span>5年（償却一致）</span><span>7年</span><span>15年</span></div>
+            </div>
+
+            <!-- 借入金利 -->
+            <div>
+              <div class="flex justify-between text-xs font-medium mb-1">
+                <label for="interest_rate">借入金利（年利）</label>
+                <span id="interest_rate_val" class="font-bold text-slate-900">2.0 %</span>
+              </div>
+              <input type="range" id="interest_rate" min="0.5" max="6.0" step="0.1" value="2.0" class="w-full" oninput="updateSim()">
+              <div class="flex justify-between text-[10px] text-slate-400"><span>0.5%</span><span>2.0%</span><span>4.0%</span><span>6.0%</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 運営・収益条件 -->
+        <div class="bg-white rounded-xl p-5 card-shadow border border-slate-200">
+          <h2 class="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2.5 mb-4">2. 宿泊運営・出口条件</h2>
+
+          <div class="space-y-4">
+            <!-- 客室単価 ADR -->
+            <div>
+              <div class="flex justify-between text-xs font-medium mb-1">
+                <label for="adr">客室単価（ADR / 1泊）</label>
+                <span id="adr_val" class="font-bold text-slate-900">20,000 円</span>
+              </div>
+              <input type="range" id="adr" min="10000" max="50000" step="1000" value="20000" class="w-full" oninput="updateSim()">
+              <div class="flex justify-between text-[10px] text-slate-400"><span>1.0万</span><span>2.0万</span><span>3.5万</span><span>5.0万</span></div>
+            </div>
+
+            <!-- 年間平均稼働率 -->
+            <div>
+              <div class="flex justify-between text-xs font-medium mb-1">
+                <label for="occ">年間平均稼働率</label>
+                <span id="occ_val" class="font-bold text-slate-900">50.0 % (182.5泊)</span>
+              </div>
+              <input type="range" id="occ" min="20" max="90" step="1" value="50" class="w-full" oninput="updateSim()">
+              <div class="flex justify-between text-[10px] text-slate-400"><span>20%</span><span>50%</span><span>70%</span><span>90%</span></div>
+            </div>
+
+            <!-- 5年後残存売却価値率 -->
+            <div>
+              <div class="flex justify-between text-xs font-medium mb-1">
+                <label for="tv_rate">5年後残存売却価値率（対初期投資）</label>
+                <span id="tv_rate_val" class="font-bold text-slate-900">20 % (1,600,000円)</span>
+              </div>
+              <input type="range" id="tv_rate" min="0" max="50" step="5" value="20" class="w-full" oninput="updateSim()">
+              <div class="flex justify-between text-[10px] text-slate-400"><span>0% (ゼロ)</span><span>20%</span><span>50%</span></div>
+            </div>
+          </div>
+
+          <!-- 詳細コスト設定（折りたたみ） -->
+          <details class="mt-4 pt-3 border-t border-slate-100 text-xs">
+            <summary class="cursor-pointer font-semibold text-slate-600 hover:text-slate-900">詳細コスト・税務前提を調整する</summary>
+            <div class="mt-3 space-y-2.5 text-slate-700">
+              <div class="flex items-center justify-between">
+                <label>OTA・決済手数料率 (%)</label>
+                <input type="number" id="ota_rate" value="12" min="0" max="30" step="1" class="w-20 border rounded px-2 py-1 text-right" oninput="updateSim()">
+              </div>
+              <div class="flex items-center justify-between">
+                <label>清掃・リネン費 (円/泊)</label>
+                <input type="number" id="clean_cost" value="3500" min="0" max="15000" step="500" class="w-20 border rounded px-2 py-1 text-right" oninput="updateSim()">
+              </div>
+              <div class="flex items-center justify-between">
+                <label>水道光熱・通信費 (円/月)</label>
+                <input type="number" id="util_month" value="15000" min="0" max="100000" step="1000" class="w-20 border rounded px-2 py-1 text-right" oninput="updateSim()">
+              </div>
+              <div class="flex items-center justify-between">
+                <label>運営管理・システム費 (円/月)</label>
+                <input type="number" id="mgmt_month" value="25000" min="0" max="150000" step="1000" class="w-20 border rounded px-2 py-1 text-right" oninput="updateSim()">
+              </div>
+              <div class="flex items-center justify-between">
+                <label>土地賃料・固定資産税 (円/月)</label>
+                <input type="number" id="land_month" value="30000" min="0" max="200000" step="1000" class="w-20 border rounded px-2 py-1 text-right" oninput="updateSim()">
+              </div>
+              <div class="flex items-center justify-between">
+                <label>修繕・保守・保険費 (円/年)</label>
+                <input type="number" id="maint_year" value="120000" min="0" max="1000000" step="10000" class="w-20 border rounded px-2 py-1 text-right" oninput="updateSim()">
+              </div>
+              <div class="flex items-center justify-between">
+                <label>減価償却年数 (年)</label>
+                <input type="number" id="dep_years" value="4" min="1" max="20" step="1" class="w-20 border rounded px-2 py-1 text-right" oninput="updateSim()">
+              </div>
+              <div class="flex items-center justify-between">
+                <label>実効税率 (%)</label>
+                <input type="number" id="tax_rate" value="30" min="0" max="50" step="1" class="w-20 border rounded px-2 py-1 text-right" oninput="updateSim()">
+              </div>
+            </div>
+          </details>
+        </div>
+      </aside>
+
+      <!-- 右カラム：シミュレーション結果 & 5段階評価レポート -->
+      <section class="lg:col-span-8 space-y-6 print-full-width">
+
+        <!-- PDF印刷時のみ表示する前提条件サマリー -->
+        <div class="hidden print:block bg-slate-50 border border-slate-300 rounded-lg p-3 text-xs">
+          <div class="font-bold text-slate-800 mb-1">【試算前提条件サマリー】</div>
+          <div id="print_params_summary" class="grid grid-cols-3 gap-2 text-slate-700"></div>
+        </div>
+
+        <!-- 5段階評価レポートカード（PDF出力対象の中核） -->
+        <div id="rating_card" class="bg-white rounded-xl p-6 card-shadow border-2 border-slate-200 transition-colors">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+            <div>
+              <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Investment Evaluation Report</span>
+              <h2 class="text-lg font-extrabold text-slate-900 mt-0.5">投資事業性 5段階総合評価レポート</h2>
+            </div>
+            <div class="flex items-center gap-3 bg-slate-50 px-4 py-2.5 rounded-xl border border-slate-200">
+              <div class="text-right">
+                <div class="text-[11px] text-slate-500 font-medium">総合スコア</div>
+                <div id="rating_badge" class="text-base font-black text-blue-800">★★★★☆ (4 / 5)</div>
+              </div>
+              <div id="rating_stars" class="text-2xl text-amber-400 tracking-tighter select-none">★★★★☆</div>
+            </div>
+          </div>
+
+          <!-- 評価タイトルと総評コメント -->
+          <div class="mt-4">
+            <div id="rating_headline" class="text-base font-bold text-slate-900 mb-2"></div>
+            <p id="rating_comment" class="text-sm text-slate-700 leading-relaxed"></p>
+          </div>
+
+          <!-- 評価軸別（収益性・返済安全性・資金回収効率・出口耐性）コメント -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4 pt-4 border-t border-slate-100 text-xs">
+            <div class="bg-slate-50 p-3 rounded-lg border border-slate-100">
+              <div class="font-bold text-slate-800 mb-1 flex justify-between">
+                <span>① 資本効率（レバレッジIRR）</span>
+                <span id="sub_score_irr" class="text-blue-700 font-bold"></span>
+              </div>
+              <p id="sub_comment_irr" class="text-slate-600 leading-relaxed"></p>
+            </div>
+            <div class="bg-slate-50 p-3 rounded-lg border border-slate-100">
+              <div class="font-bold text-slate-800 mb-1 flex justify-between">
+                <span>② 返済安全性（DSCR・資金繰り）</span>
+                <span id="sub_score_dscr" class="text-blue-700 font-bold"></span>
+              </div>
+              <p id="sub_comment_dscr" class="text-slate-600 leading-relaxed"></p>
+            </div>
+            <div class="bg-slate-50 p-3 rounded-lg border border-slate-100">
+              <div class="font-bold text-slate-800 mb-1 flex justify-between">
+                <span>③ 初期自己資金の回収スピード</span>
+                <span id="sub_score_payback" class="text-blue-700 font-bold"></span>
+              </div>
+              <p id="sub_comment_payback" class="text-slate-600 leading-relaxed"></p>
+            </div>
+            <div class="bg-slate-50 p-3 rounded-lg border border-slate-100">
+              <div class="font-bold text-slate-800 mb-1 flex justify-between">
+                <span>④ 5年目出口（残債・売却耐性）</span>
+                <span id="sub_score_exit" class="text-blue-700 font-bold"></span>
+              </div>
+              <p id="sub_comment_exit" class="text-slate-600 leading-relaxed"></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 主要KPIカード（4指標） -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+          <div class="bg-white p-4 rounded-xl card-shadow border border-slate-200">
+            <div class="text-xs text-slate-500 font-medium">レバレッジ後 IRR</div>
+            <div id="kpi_lev_irr" class="text-2xl font-black text-blue-900 mt-1">16.3%</div>
+            <div id="kpi_unlev_irr" class="text-[11px] text-slate-500 mt-1">全額自己資金時: 4.4%</div>
+          </div>
+
+          <div class="bg-white p-4 rounded-xl card-shadow border border-slate-200">
+            <div class="text-xs text-slate-500 font-medium">DSCR（返済余裕率）</div>
+            <div id="kpi_dscr" class="text-2xl font-black text-slate-900 mt-1">1.27倍</div>
+            <div id="kpi_pmt" class="text-[11px] text-slate-500 mt-1">年間返済: 127.3万円</div>
+          </div>
+
+          <div class="bg-white p-4 rounded-xl card-shadow border border-slate-200">
+            <div class="text-xs text-slate-500 font-medium">自己資金回収期間</div>
+            <div id="kpi_payback" class="text-2xl font-black text-slate-900 mt-1">4.5年</div>
+            <div id="kpi_equity" class="text-[11px] text-slate-500 mt-1">初期自己資金: 200万円</div>
+          </div>
+
+          <div class="bg-white p-4 rounded-xl card-shadow border border-slate-200">
+            <div class="text-xs text-slate-500 font-medium">5年累計 純キャッシュ</div>
+            <div id="kpi_cum_cf" class="text-2xl font-black text-emerald-700 mt-1">+84.9万円</div>
+            <div id="kpi_rem_debt" class="text-[11px] text-slate-500 mt-1">5期末残債: 0円</div>
+          </div>
+        </div>
+
+        <!-- キャッシュフロー推移グラフ -->
+        <div class="bg-white rounded-xl p-5 card-shadow border border-slate-200">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-bold text-slate-800">年次自己資金キャッシュフロー（FCF）および累計CF推移</h3>
+            <span class="text-xs text-slate-400">単位：万円</span>
+          </div>
+          <div class="h-60 w-full">
+            <canvas id="cfChart"></canvas>
+          </div>
+        </div>
+
+        <!-- 5年間 年次損益・返済・キャッシュフロー詳細テーブル -->
+        <div class="bg-white rounded-xl p-5 card-shadow border border-slate-200 overflow-x-auto">
+          <h3 class="text-sm font-bold text-slate-800 mb-3">年次損益（P&amp;L）・借入返済・自己資金キャッシュフロー推移表（1台あたり）</h3>
+          <table class="w-full text-xs text-right border-collapse">
+            <thead>
+              <tr class="bg-slate-800 text-white">
+                <th class="text-left py-2.5 px-3 font-semibold rounded-tl-lg">勘定科目・指標（円）</th>
+                <th class="py-2.5 px-2.5 font-semibold">0年目</th>
+                <th class="py-2.5 px-2.5 font-semibold">1年目</th>
+                <th class="py-2.5 px-2.5 font-semibold">2年目</th>
+                <th class="py-2.5 px-2.5 font-semibold">3年目</th>
+                <th class="py-2.5 px-2.5 font-semibold">4年目</th>
+                <th class="py-2.5 px-2.5 font-semibold">5年目</th>
+                <th class="py-2.5 px-3 font-semibold rounded-tr-lg">5年累計</th>
+              </tr>
+            </thead>
+            <tbody id="pl_table_body" class="divide-y divide-slate-200">
+              <!-- JSで動的生成 -->
+            </tbody>
+          </table>
+        </div>
+
+      </section>
+    </div>
+  </main>
+
+  <script>
+    let cfChartInstance = null;
+
+    function fmtYen(num) {
+      return Math.round(num).toLocaleString('ja-JP');
+    }
+
+    function fmtMan(num) {
+      const man = num / 10000;
+      return (man >= 0 ? '+' : '') + man.toFixed(1) + '万円';
+    }
+
+    // Newton-Raphson + Bisection fallback for IRR
+    function computeIRR(cf) {
+      const total = cf.reduce((a, b) => a + b, 0);
+      if (cf[0] >= 0) return null;
+      // Check if there is at least one positive cash flow
+      if (!cf.some((v, idx) => idx > 0 && v > 0)) return null;
+
+      function npv(rate) {
+        let sum = 0;
+        for (let t = 0; t < cf.length; t++) {
+          sum += cf[t] / Math.pow(1 + rate, t);
+        }
+        return sum;
+      }
+
+      // Bracket search between -0.95 and 5.0 (500%)
+      let low = -0.95;
+      let high = 5.0;
+      let npvLow = npv(low);
+      let npvHigh = npv(high);
+
+      if (npvLow * npvHigh > 0) {
+        return total > 0 ? null : null;
+      }
+
+      for (let i = 0; i < 100; i++) {
+        const mid = (low + high) / 2;
+        const npvMid = npv(mid);
+        if (Math.abs(npvMid) < 1e-6) return mid;
+        if (npvLow * npvMid < 0) {
+          high = mid;
+          npvHigh = npvMid;
+        } else {
+          low = mid;
+          npvLow = npvMid;
+        }
+      }
+      return (low + high) / 2;
+    }
+
+    function resetDefaults() {
+      document.getElementById('capex').value = 8000000;
+      document.getElementById('equity').value = 2000000;
+      document.getElementById('loan_term').value = 5;
+      document.getElementById('interest_rate').value = 2.0;
+      document.getElementById('adr').value = 20000;
+      document.getElementById('occ').value = 50;
+      document.getElementById('tv_rate').value = 20;
+      document.getElementById('ota_rate').value = 12;
+      document.getElementById('clean_cost').value = 3500;
+      document.getElementById('util_month').value = 15000;
+      document.getElementById('mgmt_month').value = 25000;
+      document.getElementById('land_month').value = 30000;
+      document.getElementById('maint_year').value = 120000;
+      document.getElementById('dep_years').value = 4;
+      document.getElementById('tax_rate').value = 30;
+      updateSim();
+    }
+
+    function updateSim() {
+      // Read inputs
+      const capex = parseFloat(document.getElementById('capex').value);
+      let equity = parseFloat(document.getElementById('equity').value);
+      if (equity > capex) {
+        equity = capex;
+        document.getElementById('equity').value = capex;
+      }
+      const debt = Math.max(0, capex - equity);
+      const loanTerm = parseInt(document.getElementById('loan_term').value, 10);
+      const rate = parseFloat(document.getElementById('interest_rate').value) / 100;
+      const adr = parseFloat(document.getElementById('adr').value);
+      const occ = parseFloat(document.getElementById('occ').value) / 100;
+      const tvRate = parseFloat(document.getElementById('tv_rate').value) / 100;
+
+      const otaRate = (parseFloat(document.getElementById('ota_rate').value) || 0) / 100;
+      const cleanPerStay = parseFloat(document.getElementById('clean_cost').value) || 0;
+      const utilMonth = parseFloat(document.getElementById('util_month').value) || 0;
+      const mgmtMonth = parseFloat(document.getElementById('mgmt_month').value) || 0;
+      const landMonth = parseFloat(document.getElementById('land_month').value) || 0;
+      const maintYear = parseFloat(document.getElementById('maint_year').value) || 0;
+      const depYears = Math.max(1, parseInt(document.getElementById('dep_years').value, 10) || 4);
+      const taxRate = (parseFloat(document.getElementById('tax_rate').value) || 0) / 100;
+
+      const soldNights = 365 * occ;
+      const tvAmount = capex * tvRate;
+
+      // Update UI labels
+      document.getElementById('capex_val').textContent = fmtYen(capex) + ' 円';
+      document.getElementById('equity_val').textContent = fmtYen(equity) + ' 円';
+      document.getElementById('debt_display').textContent = fmtYen(debt) + ' 円';
+      document.getElementById('loan_term_val').textContent = loanTerm + ' 年';
+      document.getElementById('interest_rate_val').textContent = (rate * 100).toFixed(1) + ' %';
+      document.getElementById('adr_val').textContent = fmtYen(adr) + ' 円';
+      document.getElementById('occ_val').textContent = (occ * 100).toFixed(1) + ' % (' + soldNights.toFixed(1) + '泊)';
+      document.getElementById('tv_rate_val').textContent = (tvRate * 100).toFixed(0) + ' % (' + fmtYen(tvAmount) + '円)';
+
+      // Print summary text
+      document.getElementById('print_params_summary').innerHTML = `
+        <div>初期投資額: <strong>${fmtYen(capex)}円</strong></div>
+        <div>自己資金 / 借入: <strong>${fmtYen(equity)}円 / ${fmtYen(debt)}円</strong></div>
+        <div>借入条件: <strong>金利${(rate*100).toFixed(1)}%・${loanTerm}年返済</strong></div>
+        <div>客室単価(ADR): <strong>${fmtYen(adr)}円</strong></div>
+        <div>年間平均稼働率: <strong>${(occ*100).toFixed(1)}% (${soldNights.toFixed(1)}泊)</strong></div>
+        <div>5年後残存価値: <strong>${(tvRate*100).toFixed(0)}% (${fmtYen(tvAmount)}円)</strong></div>
+      `;
+
+      // Annual operating metrics
+      const revY = adr * soldNights;
+      const varY = revY * otaRate + soldNights * cleanPerStay;
+      const fixedY = (utilMonth + mgmtMonth + landMonth) * 12 + maintYear;
+      const ebitdaY = revY - varY - fixedY;
+
+      // Debt schedule (Level payment / 元利均等返済)
+      let annualPmt = 0;
+      if (debt > 0) {
+        if (rate === 0) {
+          annualPmt = debt / loanTerm;
+        } else {
+          annualPmt = debt * (rate * Math.pow(1 + rate, loanTerm)) / (Math.pow(1 + rate, loanTerm) - 1);
+        }
+      }
+
+      const rev = [0, revY, revY, revY, revY, revY];
+      const varCost = [0, varY, varY, varY, varY, varY];
+      const fixedCost = [0, fixedY, fixedY, fixedY, fixedY, fixedY];
+      const ebitda = [0, ebitdaY, ebitdaY, ebitdaY, ebitdaY, ebitdaY];
+      const dep = [0];
+      const ebit = [0];
+      const interest = [0];
+      const principal = [0];
+      const endDebt = [debt];
+      const taxes = [0];
+      const netIncome = [0];
+      const opEqCF = [-equity];
+      const exitTV = [0, 0, 0, 0, 0, tvAmount];
+      const exitDebtPayoff = [0, 0, 0, 0, 0, 0];
+      const levFCF = [-equity];
+      const cumLevCF = [-equity];
+      const unlevFCF = [-capex];
+
+      for (let y = 1; y <= 5; y++) {
+        const d_y = y <= depYears ? capex / depYears : 0;
+        const ebit_y = ebitdaY - d_y;
+        dep.push(d_y);
+        ebit.push(ebit_y);
+
+        // Debt service in year y (only if y <= loanTerm and endDebt[y-1] > 0)
+        let int_y = 0;
+        let prin_y = 0;
+        let rem_y = endDebt[y - 1];
+        if (debt > 0 && y <= loanTerm && rem_y > 0) {
+          int_y = rem_y * rate;
+          prin_y = Math.min(rem_y, annualPmt - int_y);
+          rem_y = Math.max(0, rem_y - prin_y);
+        }
+        interest.push(int_y);
+        principal.push(prin_y);
+        endDebt.push(rem_y);
+
+        // Taxes
+        const ebt_y = ebit_y - int_y;
+        const tax_y = Math.max(0, ebt_y * taxRate);
+        const ni_y = ebt_y - tax_y;
+        taxes.push(tax_y);
+        netIncome.push(ni_y);
+
+        // Operating Equity CF
+        const op_cf_y = ni_y + d_y - prin_y;
+        opEqCF.push(op_cf_y);
+
+        // Year 5 Exit Debt Payoff (if loanTerm > 5, remaining balance is paid off at Year 5)
+        const payoff_y = (y === 5) ? -rem_y : 0;
+        exitDebtPayoff.push(payoff_y);
+
+        const total_lev_cf_y = op_cf_y + exitTV[y] + payoff_y;
+        levFCF.push(total_lev_cf_y);
+        cumLevCF.push(cumLevCF[y - 1] + total_lev_cf_y);
+
+        // Unlevered FCF
+        const unlev_tax_y = Math.max(0, ebit_y * taxRate);
+        const unlev_cf_y = (ebit_y - unlev_tax_y) + d_y + exitTV[y];
+        unlevFCF.push(unlev_cf_y);
+      }
+
+      // Compute IRRs
+      const levIRR = equity > 0 ? computeIRR(levFCF) : null;
+      const unlevIRR = computeIRR(unlevFCF);
+      const dscr = annualPmt > 0 ? (ebitdaY / annualPmt) : null;
+
+      // Payback period
+      let paybackText = '5年超（未回収）';
+      let paybackYears = null;
+      if (equity === 0) {
+        paybackText = '0.0年';
+        paybackYears = 0;
+      } else {
+        for (let y = 1; y <= 5; y++) {
+          if (cumLevCF[y] >= 0) {
+            const prevCum = cumLevCF[y - 1];
+            const frac = levFCF[y] > 0 ? Math.abs(prevCum) / levFCF[y] : 0;
+            paybackYears = (y - 1) + frac;
+            paybackText = paybackYears.toFixed(1) + '年';
+            break;
+          }
+        }
+      }
+
+      // Update KPI Cards
+      document.getElementById('kpi_lev_irr').textContent =
+        equity === 0 ? '∞ (自己資金0)' : (levIRR !== null ? (levIRR * 100).toFixed(1) + '%' : '回収不能');
+      document.getElementById('kpi_unlev_irr').textContent =
+        '全額自己資金時: ' + (unlevIRR !== null ? (unlevIRR * 100).toFixed(1) + '%' : '回収不能');
+
+      document.getElementById('kpi_dscr').textContent = dscr !== null ? dscr.toFixed(2) + '倍' : '借入なし';
+      document.getElementById('kpi_pmt').textContent = '年間返済: ' + (annualPmt / 10000).toFixed(1) + '万円';
+
+      document.getElementById('kpi_payback').textContent = paybackText;
+      document.getElementById('kpi_equity').textContent = '初期自己資金: ' + (equity / 10000).toFixed(0) + '万円';
+
+      const totalCumCF = cumLevCF[5];
+      const kpiCumEl = document.getElementById('kpi_cum_cf');
+      kpiCumEl.textContent = fmtMan(totalCumCF);
+      kpiCumEl.className = 'text-2xl font-black mt-1 ' + (totalCumCF >= 0 ? 'text-emerald-700' : 'text-rose-600');
+      document.getElementById('kpi_rem_debt').textContent = '5期末残債: ' + fmtYen(endDebt[5]) + '円';
+
+      // Render Table
+      const sumArr = arr => arr.reduce((a, b) => a + b, 0);
+      const tableRows = [
+        { label: '売上高', data: rev, bold: true, bg: 'bg-slate-50' },
+        { label: '変動費（OTA手数料・清掃費）', data: varCost.map(v => -v) },
+        { label: '固定費（光熱・管理・地代・保険）', data: fixedCost.map(v => -v) },
+        { label: 'EBITDA（償却前営業利益）', data: ebitda, bold: true, bg: 'bg-blue-50/50' },
+        { label: '減価償却費', data: dep.map(v => -v) },
+        { label: '支払利息', data: interest.map(v => -v) },
+        { label: '法人税等（概算）', data: taxes.map(v => -v) },
+        { label: '借入金 元本返済額', data: principal.map(v => -v) },
+        { label: '運営自己資金CF（返済後・Exit前）', data: opEqCF, bold: true, bg: 'bg-slate-50' },
+        { label: '5年後残存売却価値（Exit収入）', data: exitTV },
+        { label: '5年後借入残高一括返済（Exit支出）', data: exitDebtPayoff },
+        { label: 'レバレッジ後 自己資金FCF', data: levFCF, bold: true, bg: 'bg-blue-100/70', highlight: true },
+        { label: '累計自己資金キャッシュフロー', data: cumLevCF, bold: true, isCum: true }
+      ];
+
+      const tbody = document.getElementById('pl_table_body');
+      tbody.innerHTML = tableRows.map(row => {
+        const totalVal = row.isCum ? row.data[5] : sumArr(row.data);
+        const cells = row.data.map(val => {
+          const colorCls = val < 0 ? 'text-rose-600' : (row.highlight && val > 0 ? 'text-blue-900' : '');
+          return `<td class="py-2 px-2.5 ${colorCls}">${fmtYen(val)}</td>`;
+        }).join('');
+        const totColor = totalVal < 0 ? 'text-rose-600' : 'text-slate-900';
+        return `
+          <tr class="${row.bg || ''} ${row.bold ? 'font-bold' : ''}">
+            <td class="text-left py-2 px-3">${row.label}</td>
+            ${cells}
+            <td class="py-2 px-3 font-bold ${totColor}">${fmtYen(totalVal)}</td>
+          </tr>
+        `;
+      }).join('');
+
+      // Update Chart
+      updateChart(levFCF, cumLevCF);
+
+      // Update 5-Stage Evaluation Report
+      updateRatingReport({
+        capex, equity, debt, loanTerm, rate, adr, occ, tvRate,
+        ebitdaY, annualPmt, dscr, levIRR, unlevIRR, paybackYears,
+        totalCumCF, remDebt5: endDebt[5], minOpCF: Math.min(...opEqCF.slice(1))
+      });
+    }
+
+    function updateRatingReport(m) {
+      // Score calculation across 4 pillars (each 1.0 to 5.0)
+      // 1. Capital Efficiency (IRR)
+      let sIRR = 1;
+      let cIRR = '';
+      if (m.equity === 0) {
+        sIRR = m.totalCumCF > 0 ? 5 : 1;
+        cIRR = '自己資金ゼロ（フルローン）のため理論上IRRは無限大です。手元資金を温存できる反面、返済負担の重さに注意が必要です。';
+      } else if (m.levIRR === null || m.levIRR < 0) {
+        sIRR = 1;
+        cIRR = '5年間で初期自己資金を回収できず、IRRがマイナス圏です。単価アップまたは稼働率改善が必須です。';
+      } else if (m.levIRR < 0.08) {
+        sIRR = 2;
+        cIRR = `自己資金IRRは${(m.levIRR*100).toFixed(1)}%とやや低調です。借入金利（${(m.rate*100).toFixed(1)}%）を上回っていますが、リスクに見合うリターン（目安10〜15%以上）には改善余地があります。`;
+      } else if (m.levIRR < 0.15) {
+        sIRR = 3.5;
+        cIRR = `自己資金IRRは${(m.levIRR*100).toFixed(1)}%で、全額自己資金時（${m.unlevIRR !== null ? (m.unlevIRR*100).toFixed(1)+'%' : '-'}）からレバレッジ効果が有効に機能しています。`;
+      } else if (m.levIRR < 0.25) {
+        sIRR = 4.5;
+        cIRR = `自己資金IRRは${(m.levIRR*100).toFixed(1)}%と魅力的な水準です。低金利調達により資本効率が大きく高められています。`;
+      } else {
+        sIRR = 5;
+        cIRR = `自己資金IRRは${(m.levIRR*100).toFixed(1)}%と極めて高い収益性です。投資回収後の再投資（2台目・3台目展開）を強く推進できる水準です。`;
+      }
+
+      // 2. Debt Safety (DSCR & Operating Cash Flow)
+      let sDSCR = 3;
+      let cDSCR = '';
+      if (m.debt === 0) {
+        sDSCR = 5;
+        cDSCR = '無借金経営のため返済リスクはゼロです。閑散期の稼働低下に対しても高い耐性を持ちます。';
+      } else if (m.dscr < 1.0) {
+        sDSCR = 1;
+        cDSCR = `DSCRが${m.dscr.toFixed(2)}倍（1.0倍未満）であり、本業のEBITDAだけで年間返済額（${(m.annualPmt/10000).toFixed(1)}万円）を賄えず毎年赤字補填が必要です。借入期間の延長が推奨されます。`;
+      } else if (m.dscr < 1.2) {
+        sDSCR = 2;
+        cDSCR = `DSCRは${m.dscr.toFixed(2)}倍とギリギリ返済可能な水準ですが、銀行融資の一般的審査目安（1.2〜1.3倍以上）を下回っており、閑散期の資金ショートに注意が必要です。`;
+      } else if (m.dscr < 1.5) {
+        sDSCR = 3.5;
+        cDSCR = `DSCRは${m.dscr.toFixed(2)}倍で融資目安（1.2倍以上）をクリアしています。返済期間${m.loanTerm}年でも本業キャッシュフローから安定的に元利返済が可能です。`;
+      } else if (m.dscr < 2.0) {
+        sDSCR = 4.5;
+        cDSCR = `DSCRは${m.dscr.toFixed(2)}倍と十分な返済余裕があります。稼働率が10%程度下振れしても返済が滞るリスクは低い健全な設計です。`;
+      } else {
+        sDSCR = 5;
+        cDSCR = `DSCRは${m.dscr.toFixed(2)}倍と盤石な返済安全性を誇ります。金融機関からの追加融資（増設資金調達）も極めて受けやすい財務内容です。`;
+      }
+
+      // 3. Payback Speed
+      let sPay = 3;
+      let cPay = '';
+      if (m.paybackYears === null) {
+        sPay = 1;
+        cPay = '5年間の運営およびExit売却を含めても初期自己資金を回収できません。投資条件の見直しが必要です。';
+      } else if (m.paybackYears <= 2.5) {
+        sPay = 5;
+        cPay = `初期自己資金を約${m.paybackYears.toFixed(1)}年で早期回収できます。事業リスクに晒される期間が短く非常に優秀です。`;
+      } else if (m.paybackYears <= 3.5) {
+        sPay = 4;
+        cPay = `初期自己資金の回収期間は約${m.paybackYears.toFixed(1)}年です。減価償却期間（4年）内に元本回収が完了する健全なペースです。`;
+      } else if (m.paybackYears <= 4.8) {
+        sPay = 3;
+        cPay = `自己資金回収は約${m.paybackYears.toFixed(1)}年かかります。借入返済期間（${m.loanTerm}年）が短いため前半のキャッシュ留保が緩やかですが、5年以内に回収可能です。`;
+      } else {
+        sPay = 2;
+        cPay = `5年目の車両売却（Exit収入）に頼ってようやく初期自己資金を回収する構造です。運営期間中のキャッシュ創出強化が課題です。`;
+      }
+
+      // 4. Exit & Remaining Debt Resilience
+      let sExit = 3;
+      let cExit = '';
+      if (m.remDebt5 === 0) {
+        sExit = 5;
+        cExit = `5年目で借入が完済（残債0円）するため、5期末の売却収入（${(m.capex*m.tvRate/10000).toFixed(0)}万円）がそのまま丸ごと純利益・手残り資金になります。仮に売却価格がゼロでも追加持ち出しは発生しません。`;
+      } else {
+        const netExit = (m.capex * m.tvRate) - m.remDebt5;
+        if (netExit >= 0) {
+          sExit = 4;
+          cExit = `5期末に借入残債が${(m.remDebt5/10000).toFixed(1)}万円残りますが、想定売却価値（${(m.capex*m.tvRate/10000).toFixed(0)}万円）で完済でき、差額+${(netExit/10000).toFixed(1)}万円が手元に残ります。`;
+        } else {
+          sExit = 2.5;
+          cExit = `借入期間（${m.loanTerm}年）が5年より長いため、5期末に残債${(m.remDebt5/10000).toFixed(1)}万円が残ります。売却価値（${(m.capex*m.tvRate/10000).toFixed(0)}万円）だけでは完済に${(Math.abs(netExit)/10000).toFixed(1)}万円不足するため、6年目以降の継続保有が前提となります。`;
+        }
+      }
+
+      // Overall 5-star integer rating
+      const avgScore = (sIRR * 0.35) + (sDSCR * 0.30) + (sPay * 0.20) + (sExit * 0.15);
+      const starsInt = Math.max(1, Math.min(5, Math.round(avgScore)));
+      const starStr = '★'.repeat(starsInt) + '☆'.repeat(5 - starsInt);
+
+      document.getElementById('rating_stars').textContent = starStr;
+      document.getElementById('rating_badge').textContent = `${starStr} (${starsInt} / 5段階評価)`;
+
+      document.getElementById('sub_score_irr').textContent = `評価 ${sIRR.toFixed(1)} / 5.0`;
+      document.getElementById('sub_comment_irr').textContent = cIRR;
+      document.getElementById('sub_score_dscr').textContent = `評価 ${sDSCR.toFixed(1)} / 5.0`;
+      document.getElementById('sub_comment_dscr').textContent = cDSCR;
+      document.getElementById('sub_score_payback').textContent = `評価 ${sPay.toFixed(1)} / 5.0`;
+      document.getElementById('sub_comment_payback').textContent = cPay;
+      document.getElementById('sub_score_exit').textContent = `評価 ${sExit.toFixed(1)} / 5.0`;
+      document.getElementById('sub_comment_exit').textContent = cExit;
+
+      const card = document.getElementById('rating_card');
+      const headline = document.getElementById('rating_headline');
+      const comment = document.getElementById('rating_comment');
+
+      if (starsInt === 5) {
+        card.className = 'bg-white rounded-xl p-6 card-shadow border-2 border-emerald-500';
+        headline.textContent = '【総合判定：極めて優秀】高いレバレッジ効率と盤石な返済安全性を両立した優良投資案件';
+        comment.textContent = `自己資金${(m.equity/10000).toFixed(0)}万円に対してIRR ${m.levIRR !== null ? (m.levIRR*100).toFixed(1)+'%' : '-'}、DSCR ${m.dscr !== null ? m.dscr.toFixed(2)+'倍' : '-'}と非常に高いパフォーマンスを示しています。本業のキャッシュフローで無理なく借入を返済しながら早期に自己資金を回収できるため、複数台への横展開も積極的に検討できる事業計画です。`;
+      } else if (starsInt === 4) {
+        card.className = 'bg-white rounded-xl p-6 card-shadow border-2 border-blue-600';
+        headline.textContent = '【総合判定：良好（投資推奨水準）】レバレッジ効果と返済バランスの取れた現実的な事業計画';
+        comment.textContent = `借入活用により自己資金IRRが${m.levIRR !== null ? (m.levIRR*100).toFixed(1)+'%' : '-'}まで引き上げられており、DSCRも${m.dscr !== null ? m.dscr.toFixed(2)+'倍' : '-'}と金融機関の融資基準を満たす健全な水準です。借入期間を${m.loanTerm}年に設定したことで${m.remDebt5 === 0 ? '5年目に完済して残債リスクがゼロになる点も高く評価できます。' : '毎年の返済負担が軽減されています。'}さらなる上振れを狙うには、稼働率55〜60%への引き上げまたは客室単価+2,000円の付加価値化が有効です。`;
+      } else if (starsInt === 3) {
+        card.className = 'bg-white rounded-xl p-6 card-shadow border-2 border-amber-400';
+        headline.textContent = '【総合判定：標準（条件改善の余地あり）】事業成立は可能だが、稼働率または返済期間の調整を推奨';
+        comment.textContent = `現状の前提では5年間でプラスのキャッシュフローを確保できるものの、${m.dscr !== null && m.dscr < 1.3 ? '年間返済負担がやや重くDSCRに余裕が少ない状態' : '自己資金回収に時間がかかる状態'}です。借入期間を7年程度へ延ばして毎月の返済額を抑えるか、OTA手数料の削減・連泊促進によって利益率を高めることで評価4以上へ改善できます。`;
+      } else if (starsInt === 2) {
+        card.className = 'bg-white rounded-xl p-6 card-shadow border-2 border-orange-500';
+        headline.textContent = '【総合判定：要注意（収益性・資金繰り課題）】現状条件のままでは資金流出・元本割れリスクが高い';
+        comment.textContent = `稼働率または客室単価に対して初期投資・借入返済負担が過大となっています。このままでは閑散期に手元資金が不足するか、5年後の出口時点で自己資金を回収できない可能性が高いため、初期投資額の圧縮、自己資金比率の引き上げ、または借入期間の長期化を再検討してください。`;
+      } else {
+        card.className = 'bg-white rounded-xl p-6 card-shadow border-2 border-rose-600';
+        headline.textContent = '【総合判定：見直し必須（投資不適格）】事業収支が成立しておらず抜本的な計画修正が必要';
+        comment.textContent = `現状の単価・稼働率では営業キャッシュフローまたは返済後の手残り資金が大きくマイナスとなり、投資元本の回収が困難です。高単価化（サウナ・BBQ等の高付加価値化）によるADR引き上げ、または固定費・初期投資の大幅な見直しを行ってください。`;
+      }
+    }
+
+    function updateChart(levFCF, cumLevCF) {
+      const ctx = document.getElementById('cfChart').getContext('2d');
+      const labels = ['0年目(初期)', '1年目', '2年目', '3年目', '4年目', '5年目'];
+      const fcfMan = levFCF.map(v => +(v / 10000).toFixed(1));
+      const cumMan = cumLevCF.map(v => +(v / 10000).toFixed(1));
+
+      if (cfChartInstance) {
+        cfChartInstance.destroy();
+      }
+
+      cfChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              type: 'line',
+              label: '累計自己資金CF（万円）',
+              data: cumMan,
+              borderColor: '#d97706',
+              backgroundColor: '#d97706',
+              borderWidth: 2.5,
+              pointRadius: 4,
+              tension: 0.2,
+              yAxisID: 'y'
+            },
+            {
+              type: 'bar',
+              label: '単年 自己資金FCF（万円）',
+              data: fcfMan,
+              backgroundColor: fcfMan.map(v => v < 0 ? 'rgba(225, 29, 72, 0.75)' : 'rgba(30, 58, 138, 0.85)'),
+              borderRadius: 4,
+              yAxisID: 'y'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { position: 'top', labels: { font: { size: 11 } } },
+            tooltip: {
+              callbacks: {
+                label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()} 万円`
+              }
+            }
+          },
+          scales: {
+            y: {
+              grid: { color: '#e2e8f0' },
+              ticks: {
+                font: { size: 11 },
+                callback: val => val + '万'
+              }
+            },
+            x: {
+              grid: { display: false },
+              ticks: { font: { size: 11 } }
+            }
+          }
+        }
+      });
+    }
+
+    // Initialize on load
+    window.addEventListener('DOMContentLoaded', updateSim);
+  </script>
+</body>
+</html>
